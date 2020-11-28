@@ -15,10 +15,10 @@ class FileMeta {
     struct tm modified;
     struct tm acessed;
     int first_block_address;
-    FileType _type;
+    FileType type_;
   public:
     FileType type() {
-        return this->_type;
+        return this->type_;
     }
 };
 
@@ -41,13 +41,15 @@ class Directory : public FileMeta {
 
 class Filesystem {
   private:
+    std::vector<bool> bitmap;
     int allocation_table[25000];
     std::fstream filesystem_file;
+    const static long max_size = 100000000;
+    const static long block_size = 4000;
+    const static long block_count = 25000;
   public:
-    Filesystem();
+    Filesystem(std::string filesystem_path);
     ~Filesystem();
-    const static int max_size = 100000000;
-    const static int block_size = 4000;
     void mount (std::string filesystem_name);
     void copy (std::string source, std::string destination);
     void mkdir (std::string directory_name);
