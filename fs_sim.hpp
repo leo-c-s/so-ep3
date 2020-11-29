@@ -10,33 +10,60 @@ enum class FileType {
 
 class FileMeta {
   protected:
-    std::string name;
-    struct tm created;
-    struct tm modified;
-    struct tm acessed;
+    std::string *name;
+    struct tm *created;
+    struct tm *modified;
+    struct tm *accessed;
     int first_block_address;
+    int size;
     FileType type_;
   public:
+    static const int max_name_len = 128;
+
+    FileMeta(std::string *name,
+            struct tm *created,
+            struct tm *modified,
+            struct tm *accessed,
+            int first_block_address,
+            int size);
+    ~FileMeta();
     FileType type() {
         return this->type_;
     }
+    static FileMeta* read_meta(std::fstream& infile, int *address);
+    // writes metadata (excluding the name) to file
+    void write_meta(std::fstream& file, int name_address);
+    void set_name(std::string new_name);
 };
 
 class File : public FileMeta {
   private:
-    int size;
     std::string content;
   public:
-    File();
+    File(std::string *name,
+            struct tm *created,
+            struct tm *modified,
+            struct tm *accessed,
+            int first_block_address,
+            int size);
     ~File();
 };
 
 class Directory : public FileMeta {
   private:
-    std::vector<FileMeta> files;
+    std::vector<FileMeta*> files;
   public:
-    Directory();
+    static const int max_files = 128;
+
+    Directory(std::string *name,
+            struct tm *created,
+            struct tm *modified,
+            struct tm *accessed,
+            int first_block_address,
+            int size);
     ~Directory();
+    void add_file(FileMeta *file);
+    void set_file_name(int index, std::string new_name);
 };
 
 class Filesystem {
@@ -44,13 +71,16 @@ class Filesystem {
     std::vector<bool> bitmap;
     int allocation_table[25000];
     std::fstream filesystem_file;
-    const static long max_size = 100000000;
-    const static long block_size = 4000;
-    const static long block_count = 25000;
+    Directory *root;
+
+    void load_directory(Directory *dir);
   public:
+    static const long max_size = 100000000;
+    static const long block_size = 4000;
+    static const long block_count = 25000;
+
     Filesystem(std::string filesystem_path);
     ~Filesystem();
-    void mount (std::string filesystem_name);
     void copy (std::string source, std::string destination);
     void mkdir (std::string directory_name);
     void rmdir (std::string directory_name);
@@ -59,6 +89,4 @@ class Filesystem {
     void ls (std::string directory_name);
     std::string find (std::string directory_name, std::string file_path);
     int df();
-    void umount();
-    void exit();
-};
+    };
