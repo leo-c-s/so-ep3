@@ -6,25 +6,27 @@
 #include <vector>
 
 int read_int(std::fstream& file) {
-    char c;
-    int n = 0;
+    char c[4];
+    unsigned int n = 0;
+
+    file.read(c, 4);
 
     for (int i = 0; i < 4; i++) {
-        file >> c;
         n = n << 8;
-        n |= c;
+        n |= (unsigned char) c[i];
     }
 
     return n;
 }
 
 void write_int(std::fstream& file, int n) {
-    char c;
+    unsigned char c;
+    unsigned int m = n;
 
     for (int i = 0; i < 4; i++) {
-        c = (n & 0xff000000) >> 24;
+        c = (m & 0xff000000) >> 24;
         file << c;
-        n = n << 8;
+        m = m << 8;
     }
 }
 
@@ -168,16 +170,17 @@ Filesystem::Filesystem(std::string filesystem_path) {
     int bitmap_char_count = this->block_count / 8;
     long cur_pos, offset;
 
-    this->bitmap = std::vector<bool>(this->block_count, false);
+    this->bitmap = std::vector<bool>(this->block_count, true);
 
     this->filesystem_file.open(filesystem_path,
             std::fstream::in | std::fstream::binary);
     if (this->filesystem_file) {
         std::cout << "Reading filesystem file" << std::endl;
 
+        std::cout << "Reading bitmap..." << std::endl;
         // read bitmap
         char c;
-        for (int i = 0; i <= bitmap_char_count; i++) {
+        for (int i = 0; i < bitmap_char_count; i++) {
             this->filesystem_file >> c;
 
             for (int j = 0; j < 8 && 8 * i + j < this->block_count; j++) {
@@ -185,20 +188,25 @@ Filesystem::Filesystem(std::string filesystem_path) {
             }
         }
 
-        // move to beginning next block
-        cur_pos = this->filesystem_file.tellg();
-        offset = this->block_size - cur_pos % this->block_size;
-        this->filesystem_file.seekg(offset, this->filesystem_file.beg);
+        std::cout << "bitmap[0..5]: ";
+        for (int i = 0; i < 7; i++) {
+            std::cout << this->bitmap[i] << " ";
+        }
+        std::cout << std::endl;
+        std::cout << "FAT starts at " << (int) this->filesystem_file.tellg()
+            << std::endl;
 
         // read FAT
+        std::cout << "Reading FAT..." << std::endl;
         for (int i = 0; i < this->block_count; i++) {
             this->allocation_table[i] = read_int(this->filesystem_file);
         }
 
-        // move to beginning next block
-        cur_pos = this->filesystem_file.tellg();
-        offset = this->block_size - cur_pos % this->block_size;
-        this->filesystem_file.seekg(offset, this->filesystem_file.beg);
+        std::cout << "FAT[0..5]: ";
+        for (int i = 0; i < 7; i++) {
+            std::cout << this->allocation_table[i] << " ";
+        }
+        std::cout << std::endl;
 
         this->root = (Directory *) FileMeta::read_meta(this->filesystem_file,
                 nullptr);
@@ -212,22 +220,33 @@ Filesystem::Filesystem(std::string filesystem_path) {
                 std::fstream::out | std::fstream::binary);
 
         // create bitmap
-        for (int i = 0; i < bitmap_char_count; i++) {
-            this->filesystem_file << (char) 'a';
+        this->filesystem_file << (char) 0b00000011; // reserve root directory
+        for (int i = 0; i < bitmap_char_count - 1; i++) {
+            this->filesystem_file << (char) 0xff;
         }
 
-        // create empty FAT
-        for (unsigned int i = 0; i < this->block_count * sizeof(int); i++) {
-            this->filesystem_file << 'b';
+        // mark root blocks as used
+        for (int i = 0; i < 6; i++) {
+            this->bitmap[i] = false;
+        }
+
+        // create FAT
+        for (int i = 0; i < 5; i++) { // make linked list for root directory
+            write_int(this->filesystem_file, i + 1);
+        }
+        write_int(this->filesystem_file, 0xffffffff); // 0xffffffff == -1
+        for (unsigned int i = 0; i < this->block_count - 6; i++) {
+            write_int(this->filesystem_file, 0);
         }
 
         // fill rest of block with zeroes
         cur_pos = this->filesystem_file.tellp();
         offset = this->block_size - cur_pos % this->block_size;
         for (int i = 0; i < offset; i++) {
-            this->filesystem_file << 'c';
+            this->filesystem_file << '\0';
         }
 
+        // create root directory
         time_t cur_time = time(nullptr);
         this->root = new Directory(nullptr,
                 localtime(&cur_time),
@@ -241,8 +260,20 @@ Filesystem::Filesystem(std::string filesystem_path) {
         cur_pos = this->filesystem_file.tellp();
         offset = this->block_size - cur_pos % this->block_size;
         for (int i = 0; i < offset; i++) {
-            this->filesystem_file << 'd';
+            this->filesystem_file << '\0';
         }
+
+        // create remaining blocks for root directory and add them to FAT
+        int cur_block = cur_pos / 4000;
+        for (int i = 0; i < 5; i++) {
+            this->allocation_table[i] = i + 1; // mark next block in FAT
+
+            for (int i = 0; i < this->block_size; i++) { // fill block with 0
+                this->filesystem_file << '\0';
+            }
+            cur_block ++;
+        }
+        this->allocation_table[5] = -1; // final block of root directory
     }
 }
 
@@ -250,4 +281,26 @@ Filesystem::~Filesystem() {
     if (this->filesystem_file.is_open()) {
         this->filesystem_file.close();
     }
+}
+
+void Filesystem::copy (std::string source, std::string destination) {}
+
+void Filesystem::mkdir (std::string directory_name) {}
+
+void Filesystem::rmdir (std::string directory_name) {}
+
+void Filesystem::cat (std::string file_path) {}
+
+void Filesystem::touch (std::string file_path) {}
+
+void Filesystem::rm (std::string file_path) {}
+
+void Filesystem::ls (std::string directory_name) {}
+
+std::string Filesystem::find (std::string directory_name, std::string file_path) {
+    return "";
+}
+
+int Filesystem::df() {
+    return 0;
 }
