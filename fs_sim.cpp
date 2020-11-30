@@ -91,6 +91,14 @@ void FileMeta::set_name(std::string new_name) {
     }
 }
 
+std::string* FileMeta::get_name() {
+    return this->name;
+}
+
+int FileMeta::get_address() {
+    return this->first_block_address;
+}
+
 File::File(std::string *n,
         struct tm *c,
         struct tm *m,
@@ -99,6 +107,14 @@ File::File(std::string *n,
         int s) : FileMeta(n, c, m, a, f, s)
 {
     this->type_ = FileType::regular;
+}
+
+std::string File::get_content() {
+    return this->content;
+}
+
+void File::set_content(std::string new_content) {
+    this->content = new_content;
 }
 
 Directory::Directory(std::string *n,
@@ -119,10 +135,29 @@ void Directory::add_file(FileMeta *file) {
     this->files.push_back(file);
 }
 
+int Directory::get_file_count() {
+    return (int) this->files.size();
+}
+
+FileMeta* Directory::get_file(std::string name) {
+    FileMeta *file = nullptr;
+
+    for (int i = 0; i < this->files.size() && file == nullptr; i++) {
+        if (this->files[i]->get_name()->compare(name) == 0) {
+            file = this->files[i];
+        }
+    }
+
+    return file;
+}
+
 void Filesystem::load_directory(Directory *dir) {
     std::vector<int> file_name_address;
     std::vector<std::string> file_name;
     int address;
+
+    this->filesystem_file.seekg(dir->get_address() * this->block_size,
+            this->filesystem_file.beg);
 
     for (int i = 0; i < Directory::max_files; i++) {
         address = read_int(this->filesystem_file);
@@ -154,7 +189,7 @@ void Filesystem::load_directory(Directory *dir) {
                 cur_block = this->allocation_table[cur_block];
             } else {
                 throw
-                    "Failed to load directory: missing next block in directory";
+                    "Failed to load directory: missing next block";
             }
         } else {
             file_name.push_back(s);
@@ -188,7 +223,7 @@ Filesystem::Filesystem(std::string filesystem_path) {
             }
         }
 
-        std::cout << "bitmap[0..5]: ";
+        std::cout << "bitmap[0..6]: ";
         for (int i = 0; i < 7; i++) {
             std::cout << this->bitmap[i] << " ";
         }
@@ -202,7 +237,7 @@ Filesystem::Filesystem(std::string filesystem_path) {
             this->allocation_table[i] = read_int(this->filesystem_file);
         }
 
-        std::cout << "FAT[0..5]: ";
+        std::cout << "FAT[0..6]: ";
         for (int i = 0; i < 7; i++) {
             std::cout << this->allocation_table[i] << " ";
         }
@@ -283,21 +318,28 @@ Filesystem::~Filesystem() {
     }
 }
 
-void Filesystem::copy (std::string source, std::string destination) {}
+void Filesystem::copy (std::string source_path, std::string dest_path) {
+}
 
-void Filesystem::mkdir (std::string directory_name) {}
+void Filesystem::mkdir (std::string dir_name) {
+}
 
-void Filesystem::rmdir (std::string directory_name) {}
+void Filesystem::rmdir (std::string dir_name) {
+}
 
-void Filesystem::cat (std::string file_path) {}
+void Filesystem::cat (std::string file_path) {
+}
 
-void Filesystem::touch (std::string file_path) {}
+void Filesystem::touch (std::string file_path) {
+}
 
-void Filesystem::rm (std::string file_path) {}
+void Filesystem::rm (std::string file_path) {
+}
 
-void Filesystem::ls (std::string directory_name) {}
+void Filesystem::ls (std::string dir_name) {
+}
 
-std::string Filesystem::find (std::string directory_name, std::string file_path) {
+std::string Filesystem::find (std::string dir_name, std::string file_path) {
     return "";
 }
 
