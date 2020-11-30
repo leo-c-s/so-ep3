@@ -85,6 +85,7 @@ class Filesystem {
     void mkdir (std::string directory_name);
     void rmdir (std::string directory_name);
     void cat (std::string file_path);
+    void touch (std::string file_path);
     void rm (std::string file_path);
     void ls (std::string directory_name);
     std::string find (std::string directory_name, std::string file_path);
