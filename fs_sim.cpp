@@ -45,6 +45,13 @@ FileMeta::FileMeta(std::string *n,
     size(s)
 {}
 
+FileMeta::~FileMeta() {
+    delete this->name;
+    delete this->created;
+    delete this->modified;
+    delete this->accessed;
+}
+
 FileMeta* FileMeta::read_meta(std::fstream& infile, int *address) {
     int file_address = read_int(infile);
     time_t created = read_int(infile);
@@ -100,8 +107,7 @@ int FileMeta::get_address() {
     return this->first_block_address;
 }
 
-struct tm* FileMeta::get_last_modified()
-{
+struct tm* FileMeta::get_last_modified() {
     return this->modified;
 }
 
@@ -113,6 +119,7 @@ File::File(std::string *n,
         int s) : FileMeta(n, c, m, a, f, s)
 {
     this->type_ = FileType::regular;
+    this->content = std::string("");
 }
 
 std::string File::get_content() {
@@ -123,8 +130,7 @@ void File::set_content(std::string new_content) {
     this->content = new_content;
 }
 
-int File::get_size()
-{
+int File::get_size() {
     return this->size;
 }
 
@@ -136,6 +142,18 @@ Directory::Directory(std::string *n,
         int s) : FileMeta(n, c, m, a, f, s)
 {
     this->type_ = FileType::directory;
+    this->files = std::vector<FileMeta*>();
+}
+
+Directory::~Directory() {
+    FileMeta* file;
+    for (int i = 0; i < this->files.size(); i++) {
+        file = this->files[i];
+        
+        if (file != nullptr) {
+            delete file;
+        }
+    }
 }
 
 void Directory::set_file_name(int index, std::string new_name) {
@@ -165,8 +183,7 @@ FileMeta* Directory::get_file(std::string name) {
 FileMeta* Directory::get_file(int index) {
     FileMeta *file = nullptr;
 
-    if(index < this->get_file_count())
-    {
+    if (index < this->get_file_count()) {
         file = this->files[index];
     }
 
@@ -178,10 +195,7 @@ void Filesystem::load_directory(Directory *dir) {
     std::vector<std::string> file_name;
     int address;
 
-    this->filesystem_file.seekg(dir->get_address() * this->block_size,
-            this->filesystem_file.beg);
-
-    for (int i = 0; i < Directory::max_files; i++) {
+    for (int i = 0; i < dir->get_file_count(); i++) {
         address = read_int(this->filesystem_file);
 
         if (address == 0) {
@@ -296,13 +310,6 @@ Filesystem::Filesystem(std::string filesystem_path) {
             write_int(this->filesystem_file, 0);
         }
 
-        // fill rest of block with zeroes
-        cur_pos = this->filesystem_file.tellp();
-        offset = this->block_size - cur_pos % this->block_size;
-        for (int i = 0; i < offset; i++) {
-            this->filesystem_file << '\0';
-        }
-
         // create root directory
         time_t cur_time = time(nullptr);
         this->root = new Directory(nullptr,
@@ -358,28 +365,23 @@ void Filesystem::touch (std::string file_path) {
     int i = 0;
     Directory* cur = this->root;
     FileMeta* temp;
-    while(i < path_names.size()-1)
-    {
+
+    while (i < path_names.size()-1) {
         temp = cur->get_file(path_names[i]);
-        if(cur == nullptr || cur->type() != FileType::directory)
-        {
-            printf("Path inválido!\n");
-            return;
-        }
-        else
-        {
+
+        if (cur == nullptr || cur->type() != FileType::directory) {
+            throw "Path inválido!";
+        } else {
             i++;
             cur = (Directory*) temp;
         }
     }
+
     //cur aponta para diretorio onde estará o arquivo
     temp = cur->get_file(path_names[i]);
-    if(temp == nullptr)
-    {
+    if (temp == nullptr) {
         //TODO: cria arquivo novo
-    }
-    else
-    {
+    } else {
         //atualiza tempo do arquivo
     }
     
@@ -394,37 +396,41 @@ void Filesystem::ls (std::string dir_name) {
     int i = 0;
     Directory* cur = this->root;
     FileMeta* temp;
-    while(i < path_names.size())
-    {
+
+    while (i < path_names.size()) {
         temp = cur->get_file(path_names[i]);
-        if(cur == nullptr || cur->type() != FileType::directory)
-        {
-            printf("Path inválido!\n");
-            return;
-        }
-        else
-        {
+
+        if (cur == nullptr || cur->type() != FileType::directory) {
+            throw "Path inválido!";
+        } else {
             i++;
             cur = (Directory*) temp;
         }
     }
+
     //cur points to the right directory
-    for(i=0;i<cur->get_file_count();i++)
-    {
+    for (i = 0; i < cur->get_file_count(); i++) {
         temp = cur->get_file(i);
-        if(temp->type() == FileType::directory)
-        {
+
+        if (temp->type() == FileType::directory) {
             //printa info diretorio
-            std::cout << temp->get_name() << "   Diretorio\nLast modified: " << asctime(temp->get_last_modified()) << std::endl;
-        }
-        else
-        {
+            std::cout
+                << temp->get_name()
+                << "   Diretorio\nLast modified: "
+                << asctime(temp->get_last_modified())
+                << std::endl;
+        } else {
             //printa info arquivo
             File* f = (File*) temp;
-            std::cout << temp->get_name() << "\nLast modified: " << asctime(temp->get_last_modified()) << std::endl;
+
+            std::cout
+                << temp->get_name()
+                << "\nLast modified: "
+                << asctime(temp->get_last_modified())
+                << std::endl;
             std::cout << "Size: " << f->get_size() << std::endl;
         }
-        printf("\n");
+        std::cout << std::endl;
     }
 }
 
@@ -443,15 +449,12 @@ std::vector<std::string> split_path(std::string file_path) {
     char* pathchar;
     pathchar = (char *) file_path.c_str();
 
-    if(pathchar[0] != '/')
-    {
-        printf("Path inválido!\n");
-        return words;
+    if (pathchar[0] != '/') {
+        throw "Path inválido!";
     }
 
     aux = strtok(&pathchar[1], "/");
-    while(aux != NULL)
-    {
+    while (aux != NULL) {
         straux.assign(aux);
         words.push_back(straux);
         aux = strtok(NULL, " ");

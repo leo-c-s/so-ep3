@@ -33,6 +33,7 @@ class FileMeta {
     static FileMeta* read_meta(std::fstream& infile, int *address);
     // writes metadata (excluding the name) to file
     void write_meta(std::fstream& file, int name_address);
+    void print_meta();
     void set_name(std::string new_name);
     std::string* get_name();
     int get_address();
@@ -85,6 +86,8 @@ class Filesystem {
     Directory *root;
 
     void load_directory(Directory *dir);
+    // offset to beginning of root directory
+    static const int first_block_offset = 103125;
   public:
     static const long max_size = 100000000;
     static const long block_size = 4000;
