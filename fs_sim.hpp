@@ -36,6 +36,7 @@ class FileMeta {
     void set_name(std::string new_name);
     std::string* get_name();
     int get_address();
+    struct tm* get_last_modified();
 };
 
 class File : public FileMeta {
@@ -52,6 +53,7 @@ class File : public FileMeta {
 
     std::string get_content();
     void set_content(std::string new_content);
+    int get_size();
 };
 
 class Directory : public FileMeta {
@@ -70,7 +72,9 @@ class Directory : public FileMeta {
     void add_file(FileMeta *file);
     void set_file_name(int index, std::string new_name);
     FileMeta* get_file(std::string name);
+    FileMeta* get_file(int index);
     int get_file_count();
+    int get_size();
 };
 
 class Filesystem {
@@ -98,3 +102,5 @@ class Filesystem {
     std::string find (std::string dir_name, std::string file_path);
     int df();
 };
+
+std::vector<std::string> split_path(std::string file_path);

@@ -4,6 +4,7 @@
 #include <iostream>
 #include <ctime>
 #include <vector>
+#include <string.h>
 
 int read_int(std::fstream& file) {
     char c[4];
@@ -99,6 +100,11 @@ int FileMeta::get_address() {
     return this->first_block_address;
 }
 
+struct tm* FileMeta::get_last_modified()
+{
+    return this->modified;
+}
+
 File::File(std::string *n,
         struct tm *c,
         struct tm *m,
@@ -115,6 +121,11 @@ std::string File::get_content() {
 
 void File::set_content(std::string new_content) {
     this->content = new_content;
+}
+
+int File::get_size()
+{
+    return this->size;
 }
 
 Directory::Directory(std::string *n,
@@ -146,6 +157,17 @@ FileMeta* Directory::get_file(std::string name) {
         if (this->files[i]->get_name()->compare(name) == 0) {
             file = this->files[i];
         }
+    }
+
+    return file;
+}
+
+FileMeta* Directory::get_file(int index) {
+    FileMeta *file = nullptr;
+
+    if(index < this->get_file_count())
+    {
+        file = this->files[index];
     }
 
     return file;
@@ -331,12 +353,79 @@ void Filesystem::cat (std::string file_path) {
 }
 
 void Filesystem::touch (std::string file_path) {
+    std::vector<std::string> path_names;
+    path_names = split_path(file_path);
+    int i = 0;
+    Directory* cur = this->root;
+    FileMeta* temp;
+    while(i < path_names.size()-1)
+    {
+        temp = cur->get_file(path_names[i]);
+        if(cur == nullptr || cur->type() != FileType::directory)
+        {
+            printf("Path inválido!\n");
+            return;
+        }
+        else
+        {
+            i++;
+            cur = (Directory*) temp;
+        }
+    }
+    //cur aponta para diretorio onde estará o arquivo
+    temp = cur->get_file(path_names[i]);
+    if(temp == nullptr)
+    {
+        //TODO: cria arquivo novo
+    }
+    else
+    {
+        //atualiza tempo do arquivo
+    }
+    
 }
 
 void Filesystem::rm (std::string file_path) {
 }
 
 void Filesystem::ls (std::string dir_name) {
+    std::vector<std::string> path_names;
+    path_names = split_path(dir_name);
+    int i = 0;
+    Directory* cur = this->root;
+    FileMeta* temp;
+    while(i < path_names.size())
+    {
+        temp = cur->get_file(path_names[i]);
+        if(cur == nullptr || cur->type() != FileType::directory)
+        {
+            printf("Path inválido!\n");
+            return;
+        }
+        else
+        {
+            i++;
+            cur = (Directory*) temp;
+        }
+    }
+    //cur points to the right directory
+    for(i=0;i<cur->get_file_count();i++)
+    {
+        temp = cur->get_file(i);
+        if(temp->type() == FileType::directory)
+        {
+            //printa info diretorio
+            std::cout << temp->get_name() << "   Diretorio\nLast modified: " << asctime(temp->get_last_modified()) << std::endl;
+        }
+        else
+        {
+            //printa info arquivo
+            File* f = (File*) temp;
+            std::cout << temp->get_name() << "\nLast modified: " << asctime(temp->get_last_modified()) << std::endl;
+            std::cout << "Size: " << f->get_size() << std::endl;
+        }
+        printf("\n");
+    }
 }
 
 std::string Filesystem::find (std::string dir_name, std::string file_path) {
@@ -345,4 +434,28 @@ std::string Filesystem::find (std::string dir_name, std::string file_path) {
 
 int Filesystem::df() {
     return 0;
+}
+
+std::vector<std::string> split_path(std::string file_path) {
+    std::vector<std::string> words;
+    std::string straux;
+    char* aux;
+    char* pathchar;
+    pathchar = (char *) file_path.c_str();
+
+    if(pathchar[0] != '/')
+    {
+        printf("Path inválido!\n");
+        return words;
+    }
+
+    aux = strtok(&pathchar[1], "/");
+    while(aux != NULL)
+    {
+        straux.assign(aux);
+        words.push_back(straux);
+        aux = strtok(NULL, " ");
+    }
+
+    return words;
 }
