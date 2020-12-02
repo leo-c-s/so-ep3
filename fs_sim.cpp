@@ -64,21 +64,23 @@ FileMeta* FileMeta::read_meta(std::fstream& infile, int *address) {
     if (address != nullptr) {
         *address = file_address;
     }
-
-    if (type == 0) {
+    
+    if (type == 1) {
         return new File(nullptr,
                 localtime(&created),
                 localtime(&modified),
                 localtime(&accessed),
                 first_block,
                 size);
-    } else {
+    } else if (type == 2) {
         return new Directory(nullptr,
                 localtime(&created),
                 localtime(&modified),
                 localtime(&accessed),
                 first_block,
                 size);
+    } else { // if type is invalid or zero, the file does not exist
+        return nullptr;
     }
 }
 
@@ -89,6 +91,12 @@ void FileMeta::write_meta(std::fstream& file, int name_address) {
     write_int(file, mktime(this->accessed));
     write_int(file, this->first_block_address);
     write_int(file, this->size);
+
+    if (this->type_ == FileType::regular) {
+        write_int(file, 1);
+    } else {
+        write_int(file, 2);
+    }
 }
 
 void FileMeta::set_name(std::string new_name) {
@@ -265,6 +273,7 @@ Filesystem::Filesystem(std::string filesystem_path) {
                 nullptr);
 
         this->load_directory(this->root);
+        std::cout << asctime(this->root->get_last_modified());
     } else {
         std::cout << "Creating filesystem file" << std::endl;
 
@@ -335,16 +344,14 @@ void Filesystem::load_directory(Directory *dir) {
     int address;
 
     // first, read the metadata of files in this directory
-    for (int i = 0; i < dir->get_file_count(); i++) {
-        address = read_int(this->filesystem_file);
+    for (int i = 0; i < Directory::max_files; i++) {
+        FileMeta *file = FileMeta::read_meta(this->filesystem_file, &address);
 
-        if (address == 0) {
+        if (file == nullptr) {
             break;
         }
 
         file_name_address.push_back(address);
-
-        FileMeta *file = FileMeta::read_meta(this->filesystem_file, &address);
 
         dir->add_file(file);
     }
