@@ -190,56 +190,8 @@ FileMeta* Directory::get_file(int index) {
     return file;
 }
 
-void Filesystem::load_directory(Directory *dir) {
-    std::vector<int> file_name_address;
-    std::vector<std::string> file_name;
-    int address;
-
-    for (int i = 0; i < dir->get_file_count(); i++) {
-        address = read_int(this->filesystem_file);
-
-        if (address == 0) {
-            break;
-        }
-
-        file_name_address.push_back(address);
-
-        FileMeta *file = FileMeta::read_meta(this->filesystem_file, &address);
-
-        dir->add_file(file);
-    }
-
-    int cur_block = (int) this->filesystem_file.tellg() / this->block_size;
-    int offset = this->allocation_table[cur_block] * this->block_size;
-    this->filesystem_file.seekg(offset, this->filesystem_file.beg);
-
-    std::string s;
-    for (int i = 0; i < (int) file_name_address.size(); i++) {
-        this->filesystem_file >> s;
-
-        if (s.empty() ||
-                this->filesystem_file.tellg() % this->block_size == 0) {
-            if (this->allocation_table[cur_block] != -1) {
-                offset = this->allocation_table[cur_block] * this->block_size;
-                this->filesystem_file.seekg(offset, this->filesystem_file.beg);
-                cur_block = this->allocation_table[cur_block];
-            } else {
-                throw
-                    "Failed to load directory: missing next block";
-            }
-        } else {
-            file_name.push_back(s);
-        }
-    }
-
-    for (int i = 0; i < (int) file_name_address.size(); i++) {
-        dir->set_file_name(i, file_name[file_name_address[i]]);
-    }
-}
-
 Filesystem::Filesystem(std::string filesystem_path) {
     int bitmap_char_count = this->block_count / 8;
-    long cur_pos, offset;
 
     this->bitmap = std::vector<bool>(this->block_count, true);
 
@@ -321,8 +273,8 @@ Filesystem::Filesystem(std::string filesystem_path) {
         this->root->write_meta(this->filesystem_file, 0);
 
         // fill rest of block with zeroes
-        cur_pos = this->filesystem_file.tellp();
-        offset = this->block_size - cur_pos % this->block_size;
+        long cur_pos = this->get_position();
+        long offset = this->block_size - cur_pos % this->block_size;
         for (int i = 0; i < offset; i++) {
             this->filesystem_file << '\0';
         }
@@ -345,6 +297,78 @@ Filesystem::~Filesystem() {
     if (this->filesystem_file.is_open()) {
         this->filesystem_file.close();
     }
+}
+
+void Filesystem::load_directory(Directory *dir) {
+    std::vector<int> file_name_address;
+    std::vector<std::string> file_name;
+    int address;
+
+    // first, read the metadata of files in this directory
+    for (int i = 0; i < dir->get_file_count(); i++) {
+        address = read_int(this->filesystem_file);
+
+        if (address == 0) {
+            break;
+        }
+
+        file_name_address.push_back(address);
+
+        FileMeta *file = FileMeta::read_meta(this->filesystem_file, &address);
+
+        dir->add_file(file);
+    }
+
+    // then, move to the next block of the directory
+    int cur_block = this->get_position() / this->block_size;
+    int next_block = this->allocation_table[cur_block];
+    this->move_to_block(next_block);
+
+    // and read all file names
+    std::string s;
+    int cur_offset;
+    for (int i = 0; i < (int) file_name_address.size(); i++) {
+        this->filesystem_file >> s;
+
+        file_name.push_back(s);
+
+        /*
+         * - if cur_offset is 0 after reading a string, then we're at the
+         * beginning of the adjecent block and should move to the correct one
+         *
+         * - if next character is '\0', then the next name was too large and
+         * was put in the next block, and so we move to it
+         */
+        cur_offset = this->get_position() % this->block_size;
+        if (cur_offset == 0 || this->filesystem_file.peek() == '\0') {
+            next_block = this->allocation_table[cur_block];
+
+            if (this->allocation_table[cur_block] != -1) {
+                this->move_to_block(next_block);
+
+                cur_block = next_block;
+            } else {
+                throw "Failed to load directory: missing next block";
+            }
+        }
+    }
+
+    // finally, set the names of the files in the directory
+    for (int i = 0; i < (int) file_name_address.size(); i++) {
+        dir->set_file_name(i, file_name[file_name_address[i]]);
+    }
+}
+
+void Filesystem::move_to_block(int block) {
+    int address = this->first_block_offset + this->block_size * block;
+
+    this->filesystem_file.seekg(address, this->filesystem_file.beg);
+    this->filesystem_file.seekp(address, this->filesystem_file.beg);
+}
+
+int Filesystem::get_position() {
+    int pos = this->filesystem_file.tellg();
+    return pos - this->first_block_offset;
 }
 
 void Filesystem::copy (std::string source_path, std::string dest_path) {

@@ -88,6 +88,8 @@ class Filesystem {
     void load_directory(Directory *dir);
     // offset to beginning of root directory
     static const int first_block_offset = 103125;
+    void move_to_block(int block);
+    int get_position();
   public:
     static const long max_size = 100000000;
     static const long block_size = 4000;
