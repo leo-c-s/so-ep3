@@ -38,6 +38,7 @@ class FileMeta {
     std::string* get_name();
     int get_address();
     struct tm* get_last_modified();
+    void set_last_accessed(struct tm* moment);
 };
 
 class File : public FileMeta {
@@ -76,6 +77,7 @@ class Directory : public FileMeta {
     FileMeta* get_file(int index);
     int get_file_count();
     int get_size();
+    int find_inside(std::string curpath, std::string file);
 };
 
 class Filesystem {
@@ -104,7 +106,7 @@ class Filesystem {
     void touch (std::string file_path);
     void rm (std::string file_path);
     void ls (std::string dir_name);
-    std::string find (std::string dir_name, std::string file_path);
+    void find (std::string dir_name, std::string file_name);
     int df();
 };
 
