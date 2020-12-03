@@ -161,7 +161,7 @@ Directory::Directory(std::string *n,
 
 Directory::~Directory() {
     FileMeta* file;
-    for (int i = 0; i < this->files.size(); i++) {
+    for (unsigned int i = 0; i < this->files.size(); i++) {
         file = this->files[i];
         
         if (file != nullptr) {
@@ -182,34 +182,34 @@ int Directory::get_file_count() {
     return (int) this->files.size();
 }
 
-int Directory::find_inside(std::string curpath, std::string file)
-{
+int Directory::find_inside(std::string curpath, std::string file) {
     int output = 0;
-    for(int i = 0;i<this->files.size();i++)
-    {
-        if(this->files[i]->type() == FileType::directory)
-        {
+
+    for(unsigned int i = 0; i < this->files.size(); i++) {
+        if(this->files[i]->type() == FileType::directory) {
             Directory* inside = (Directory*) this->files[i];
             std::string path = curpath + "/";
             path.append(*inside->get_name());
             output = inside->find_inside(path, file);
-        }
-        else
-        {
-            if(this->files[i]->get_name()->compare(file) == 0)
-            {
-                std::cout << curpath << "/" << this->files[i]->get_name() << std::endl;
+        } else {
+            if(this->files[i]->get_name()->compare(file) == 0) {
+                std::cout
+                    << curpath
+                    << "/"
+                    << this->files[i]->get_name()
+                    << std::endl;
                 output = 1;
             }
         }
     }
+
     return output;
 }
 
 FileMeta* Directory::get_file(std::string name) {
     FileMeta *file = nullptr;
 
-    for (int i = 0; i < this->files.size() && file == nullptr; i++) {
+    for (unsigned int i = 0; i < this->files.size() && file == nullptr; i++) {
         if (this->files[i]->get_name()->compare(name) == 0) {
             file = this->files[i];
         }
@@ -226,6 +226,10 @@ FileMeta* Directory::get_file(int index) {
     }
 
     return file;
+}
+
+int Directory::get_first_block_address() {
+    return this->first_block_address;
 }
 
 Filesystem::Filesystem(std::string filesystem_path) {
@@ -312,7 +316,7 @@ Filesystem::Filesystem(std::string filesystem_path) {
         this->root->write_meta(this->filesystem_file, 0);
 
         // fill rest of block with zeroes
-        long cur_pos = this->get_position();
+        long cur_pos = this->get_write_position();
         long offset = this->block_size - cur_pos % this->block_size;
         for (int i = 0; i < offset; i++) {
             this->filesystem_file << '\0';
@@ -357,7 +361,7 @@ void Filesystem::load_directory(Directory *dir) {
     }
 
     // then, move to the next block of the directory
-    int cur_block = this->get_position() / this->block_size;
+    int cur_block = this->get_read_position() / this->block_size;
     int next_block = this->allocation_table[cur_block];
     this->move_to_block(next_block);
 
@@ -376,7 +380,7 @@ void Filesystem::load_directory(Directory *dir) {
          * - if next character is '\0', then the next name was too large and
          * was put in the next block, and so we move to it
          */
-        cur_offset = this->get_position() % this->block_size;
+        cur_offset = this->get_read_position() % this->block_size;
         if (cur_offset == 0 || this->filesystem_file.peek() == '\0') {
             next_block = this->allocation_table[cur_block];
 
@@ -396,6 +400,48 @@ void Filesystem::load_directory(Directory *dir) {
     }
 }
 
+void Filesystem::save_directory(Directory *dir) {
+    int cur_block = dir->get_first_block_address(), offset;
+    int file_count = dir->get_file_count();
+    FileMeta* file;
+    std::string *name, *next_name = nullptr;
+
+    this->move_to_block(cur_block);
+
+    for (int i = 0; i < file_count; i++) {
+        file = dir->get_file(i);
+
+        file->write_meta(this->filesystem_file, i);
+    }
+
+    cur_block = this->allocation_table[cur_block];
+    this->move_to_block(cur_block);
+
+    for (int i = 0; i < file_count; i++) {
+        name = dir->get_file(i)->get_name();
+        this->filesystem_file << *name;
+
+        offset = this->get_write_position() % this->block_size;
+        if (i < file_count - 1) {
+            next_name = dir->get_file(i + 1)->get_name();
+
+            if (next_name->length() >= this->block_size - offset) {
+                for (; offset > 0; offset--) {
+                    this->filesystem_file << '\0';
+                }
+            }
+        }
+
+        if (offset == 0) {
+            cur_block = this->allocation_table[cur_block];
+            this->move_to_block(cur_block);
+        }
+
+        name = next_name;
+        next_name = nullptr;
+    }
+}
+
 void Filesystem::move_to_block(int block) {
     int address = this->first_block_offset + this->block_size * block;
 
@@ -403,8 +449,13 @@ void Filesystem::move_to_block(int block) {
     this->filesystem_file.seekp(address, this->filesystem_file.beg);
 }
 
-int Filesystem::get_position() {
+int Filesystem::get_read_position() {
     int pos = this->filesystem_file.tellg();
+    return pos - this->first_block_offset;
+}
+
+int Filesystem::get_write_position() {
+    int pos = this->filesystem_file.tellp();
     return pos - this->first_block_offset;
 }
 
@@ -418,7 +469,7 @@ void Filesystem::mkdir (std::string dir_name) {
     Directory* cur = this->root;
     FileMeta* temp;
 
-    while (i < path_names.size()-1) {
+    while (i < path_names.size() - 1) {
         temp = cur->get_file(path_names[i]);
 
         if (temp == nullptr || temp->type() != FileType::directory) {
@@ -468,7 +519,7 @@ void Filesystem::touch (std::string file_path) {
     Directory* cur = this->root;
     FileMeta* temp;
 
-    while (i < path_names.size()-1) {
+    while (i < path_names.size() - 1) {
         temp = cur->get_file(path_names[i]);
 
         if (temp == nullptr || temp->type() != FileType::directory) {
@@ -486,29 +537,24 @@ void Filesystem::touch (std::string file_path) {
         //TODO: cria arquivo novo
         
         int j = 0;
-        while(!this->bitmap[j] && j<25000)
-        {
+        while(!this->bitmap[j] && j < 25000) {
             j++;
         }
         struct tm* rightnow1 = localtime(0);
         struct tm* rightnow2 = localtime(0);
         struct tm* rightnow3 = localtime(0);
 
-        if(j!=25000)
-        {
+        if(j!=25000) {
             temp = new File(file_name, rightnow1, rightnow2, rightnow3, j, 0);
             bitmap[j] = false;
             this->allocation_table[j] = -1;
-        }
-        else
-        {
+        } else {
             std::cout << "Sistema de arquivos cheio!" << std::endl;
         }
     } else {
         struct tm* rightnow1 = localtime(0);
         temp->set_last_accessed(rightnow1);
     }
-    
 }
 
 void Filesystem::rm (std::string file_path) {

@@ -77,6 +77,7 @@ class Directory : public FileMeta {
     FileMeta* get_file(int index);
     int get_file_count();
     int get_size();
+    int get_first_block_address();
     int find_inside(std::string curpath, std::string file);
 };
 
@@ -87,11 +88,18 @@ class Filesystem {
     std::fstream filesystem_file;
     Directory *root;
 
-    void load_directory(Directory *dir);
     // offset to beginning of root directory
     static const int first_block_offset = 103125;
+
+    void load_file(File *dir);
+    void save_file(File *dir);
+
+    void load_directory(Directory *dir);
+    void save_directory(Directory *dir);
+
     void move_to_block(int block);
-    int get_position();
+    int get_read_position();
+    int get_write_position();
   public:
     static const long max_size = 100000000;
     static const long block_size = 4000;
