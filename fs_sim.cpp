@@ -107,8 +107,10 @@ void FileMeta::write_meta(std::fstream& file, int name_address) {
 
     if (this->type_ == FileType::regular) {
         write_int(file, 1);
-    } else {
+    } else if (this->type_ == FileType::directory) {
         write_int(file, 2);
+    } else {
+        write_int(file, 0);
     }
 }
 
@@ -267,8 +269,8 @@ Filesystem::Filesystem(std::string filesystem_path) {
             }
         }
 
-        std::cout << "bitmap[0..6]: ";
-        for (int i = 0; i < 7; i++) {
+        std::cout << "bitmap[0..15]: ";
+        for (int i = 0; i < 16; i++) {
             std::cout << this->bitmap[i] << " ";
         }
         std::cout << std::endl;
@@ -281,8 +283,8 @@ Filesystem::Filesystem(std::string filesystem_path) {
             this->allocation_table[i] = read_int(this->filesystem_file);
         }
 
-        std::cout << "FAT[0..6]: ";
-        for (int i = 0; i < 7; i++) {
+        std::cout << "FAT[0..15]: ";
+        for (int i = 0; i < 16; i++) {
             std::cout << this->allocation_table[i] << " ";
         }
         std::cout << std::endl;
@@ -348,6 +350,11 @@ Filesystem::Filesystem(std::string filesystem_path) {
         }
         this->allocation_table[5] = -1; // final block of root directory
     }
+
+    // reopen file allowing both read and write
+    this->filesystem_file.close();
+    this->filesystem_file.open(filesystem_path,
+            std::fstream::in | std::fstream::out | std::fstream::binary);
 }
 
 Filesystem::~Filesystem() {
@@ -441,7 +448,6 @@ void Filesystem::save_directory(Directory *dir) {
 
     for (int i = 0; i < file_count; i++) {
         file = dir->get_file(i);
-        std::cout << file << std::endl;
         std::cout << "writing meta of " << *(file->get_name()) << std::endl;
 
         file->write_meta(this->filesystem_file, i);
@@ -475,14 +481,18 @@ void Filesystem::save_directory(Directory *dir) {
     }
 
     while (cur_block != -1) {
+        std::cout << "writing empty block " << cur_block << std::endl;
         offset = this->get_write_position() % this->block_size;
-        for (; offset > 0; offset--) {
+        std::cout << "offset before " << offset << std::endl;
+        for (; offset < this->block_size; offset ++) {
             this->filesystem_file << '\0';
         }
+        offset = this->get_write_position() % this->block_size;
+        std::cout << "offset after " << offset << std::endl;
 
         cur_block = this->allocation_table[cur_block];
         this->move_to_block(cur_block);
-        std::cout << "current block: " << cur_block << std::endl;
+        std::cout << "moved to block: " << cur_block << std::endl;
     }
 }
 
@@ -504,8 +514,8 @@ int Filesystem::get_write_position() {
 }
 
 void Filesystem::set_bit(int index, bool value) {
-    int i = value / 8;
-    unsigned char prev, new_bit = 1 << value % 8;
+    int i = index / 8;
+    char prev, new_bit = 0b10000000 >> (index % 8);
 
     this->bitmap[index] = value;
     this->filesystem_file.seekg(i, this->filesystem_file.beg);
@@ -513,15 +523,16 @@ void Filesystem::set_bit(int index, bool value) {
     this->filesystem_file.seekp(i, this->filesystem_file.beg);
 
     if (value) {
-        this->filesystem_file << (prev | new_bit);
+        this->filesystem_file << (char) (prev | new_bit);
     } else {
-        this->filesystem_file << (prev & new_bit);
+        this->filesystem_file << (char) (prev & ~new_bit);
     }
 }
 
 void Filesystem::set_FAT(int index, int value) {
+    int pos = this->FAT_offset + index * 4;
     this->allocation_table[index] = value;
-    this->filesystem_file.seekp(index, this->filesystem_file.beg);
+    this->filesystem_file.seekp(pos, this->filesystem_file.beg);
     write_int(this->filesystem_file, value);
 }
 
@@ -543,6 +554,7 @@ void Filesystem::mkdir (std::string dir_name) {
         } else {
             i++;
             cur = (Directory*) temp;
+            this->load_directory(cur);
         }
     }
 
@@ -551,13 +563,6 @@ void Filesystem::mkdir (std::string dir_name) {
     if (temp != nullptr) {
         std::cout << "Diretório já existe!" << std::endl;
     } else {
-        time_t t = time(nullptr);
-        struct tm* rightnow1 = new struct tm;
-        struct tm* rightnow2 = new struct tm;
-        struct tm* rightnow3 = new struct tm;
-
-        *rightnow1 = *rightnow2 = *rightnow3 = *localtime(&t);
-
         std::vector<int> blocks;
         int j;
         for (j = 0; blocks.size() < 6 && j < 25000; j++) {
@@ -567,16 +572,25 @@ void Filesystem::mkdir (std::string dir_name) {
         }
 
         if (blocks.size() != 6) {
-            std::cout << "mkdir: not enough blocks for new directory" << std::endl;
+            std::cout
+                << "mkdir: not enough blocks for new directory"
+                << std::endl;
             return;
         }
 
         for (j = 0; j < 5; j++) {
-            this->bitmap[blocks[j]] = false;
-            this->allocation_table[blocks[j]] = blocks[j + 1];
+            this->set_bit(blocks[j], false);
+            this->set_FAT(blocks[j], blocks[j + 1]);
         }
-        this->bitmap[blocks[j]] = false;
-        this->allocation_table[blocks[j]] = -1;
+        this->set_bit(blocks[j], false);
+        this->set_FAT(blocks[j], -1);
+
+        time_t t = time(nullptr);
+        struct tm* rightnow1 = new struct tm;
+        struct tm* rightnow2 = new struct tm;
+        struct tm* rightnow3 = new struct tm;
+
+        *rightnow1 = *rightnow2 = *rightnow3 = *localtime(&t);
 
         std::string* dirnamepointer = new std::string(path_names[i]);
         new_dir = new Directory(dirnamepointer,
