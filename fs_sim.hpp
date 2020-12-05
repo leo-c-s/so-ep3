@@ -89,6 +89,7 @@ class Filesystem {
     Directory *root;
 
     // offset to beginning of root directory
+    static const int FAT_offset = 3125;
     static const int first_block_offset = 103125;
 
     void load_file(File *dir);
@@ -100,6 +101,9 @@ class Filesystem {
     void move_to_block(int block);
     int get_read_position();
     int get_write_position();
+
+    void set_bit(int index, bool value);
+    void set_FAT(int index, int value);
   public:
     static const long max_size = 100000000;
     static const long block_size = 4000;
