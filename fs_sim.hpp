@@ -121,7 +121,7 @@ class Filesystem {
     void rm (std::string file_path);
     void ls (std::string dir_name);
     void find (std::string dir_name, std::string file_name);
-    int df();
+    void df();
 };
 
 std::vector<std::string> split_path(std::string file_path);

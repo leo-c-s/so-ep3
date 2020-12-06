@@ -5,6 +5,7 @@
 #include <string>
 #include <ctime>
 #include <vector>
+#include <queue>
 #include <string.h>
 
 int read_int(std::fstream &file) {
@@ -373,7 +374,6 @@ Filesystem::~Filesystem() {
 }
 
 void Filesystem::load_file(File *file) {
-    char *buf = new char[this->block_size];
     std::string content = "";
     int cur_block = file->get_address();
 
@@ -381,6 +381,7 @@ void Filesystem::load_file(File *file) {
         return;
     }
 
+    char *buf = new char[this->block_size];
     while (cur_block != -1) {
         this->move_to_block(cur_block);
         this->filesystem_file.read(buf, this->block_size);
@@ -966,8 +967,49 @@ void Filesystem::find(std::string dir_name, std::string file_name) {
     return;
 }
 
-int Filesystem::df() {
-    return 0;
+void Filesystem::df() {
+    Directory *cur, *dir;
+    File *file;
+    FileMeta *temp;
+    std::queue<Directory *> dirs;
+    int dir_count = 1, file_count = 0, free_space = 0, wasted_space = 0;
+    int n, size;
+
+    dirs.push(this->root);
+
+    while (!dirs.empty()) {
+        cur = dirs.front();
+        this->load_directory(cur);
+        n = cur->get_file_count();
+
+        for (int i = 0; i < n; i++) {
+            temp = cur->get_file(i);
+
+            if (temp->type() == FileType::directory) {
+                dir = (Directory *) temp;
+                dir_count ++;
+                dirs.push(dir);
+            } else {
+                file = (File *) temp;
+                file_count ++;
+                size = file->get_size();
+                wasted_space += this->block_size - (size % this->block_size);
+            }
+        }
+        dirs.pop();
+    }
+
+    for (bool b : this->bitmap) {
+        if (b) {
+            free_space += this->block_size;
+        }
+    }
+
+    std::cout
+        << "Numero de diretórios: " << dir_count            << std::endl
+        << "Numero de arquivos:   " << file_count           << std::endl
+        << "Espaco livre:         " << free_space   << "KB" << std::endl
+        << "Espaco desperdicado:  " << wasted_space << "KB" << std::endl;
 }
 
 std::vector<std::string> split_path(std::string file_path) {
