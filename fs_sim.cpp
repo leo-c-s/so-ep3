@@ -206,17 +206,17 @@ int Directory::find_inside(std::string curpath, std::string file) {
     for(unsigned int i = 0; i < this->files.size(); i++) {
         if(this->files[i]->type() == FileType::directory) {
             Directory* inside = (Directory*) this->files[i];
-            std::string path = curpath + "/";
+            std::string path = curpath;
             path.append(*inside->get_name());
-            output = inside->find_inside(path, file);
+            output += inside->find_inside(path, file);
         } else {
             if(this->files[i]->get_name()->compare(file) == 0) {
                 std::cout
                     << curpath
                     << "/"
-                    << this->files[i]->get_name()
+                    << *(this->files[i]->get_name())
                     << std::endl;
-                output = 1;
+                output += 1;
             }
         }
     }
