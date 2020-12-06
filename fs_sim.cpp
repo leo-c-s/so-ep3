@@ -652,6 +652,8 @@ void Filesystem::copy (std::string source_path, std::string dest_path) {
                 t,
                 blocks[0],
                 (int) file_size);
+
+        new_file->set_content(content);
         cur->add_file(new_file);
         this->save_directory(cur);
         this->save_file(new_file);
@@ -723,6 +725,34 @@ void Filesystem::rmdir (std::string dir_name) {
 }
 
 void Filesystem::cat (std::string file_path) {
+    std::vector<std::string> path_names;
+    path_names = split_path(file_path);
+    int i = 0;
+    Directory* cur = this->root;
+    File *file;
+    FileMeta* temp;
+
+    while (i < path_names.size() - 1) {
+        temp = cur->get_file(path_names[i]);
+
+        if (temp == nullptr || temp->type() != FileType::directory) {
+            throw "Path inválido!";
+        } else {
+            i++;
+            cur = (Directory*) temp;
+            this->load_directory(cur);
+        }
+    }
+
+    //cur tem diretorio onde novo diretorio tem que estar
+    temp = cur->get_file(path_names[i]);
+    if (temp == nullptr) {
+        std::cout << "Arquivo não existe" << std::endl;
+    } else {
+        file = (File *) temp;
+        this->load_file(file);
+        std::cout << file->get_content();
+    }
 }
 
 void Filesystem::touch (std::string file_path) {
