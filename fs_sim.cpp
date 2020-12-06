@@ -45,7 +45,7 @@ std::string read_string(std::fstream& file) {
     return s;
 }
 
-FileMeta::FileMeta(std::string *n,
+FileMeta::FileMeta(std::string n,
         time_t c,
         time_t m,
         time_t a,
@@ -58,10 +58,10 @@ FileMeta::FileMeta(std::string *n,
     first_block_address(f),
     size(s)
 {
+    this->is_loaded = false;
 }
 
 FileMeta::~FileMeta() {
-    delete this->name;
 }
 
 FileMeta* FileMeta::read_meta(std::fstream& infile, int *address) {
@@ -78,14 +78,14 @@ FileMeta* FileMeta::read_meta(std::fstream& infile, int *address) {
     }
     
     if (type == 1) {
-        return new File(nullptr,
+        return new File("",
                 created,
                 modified,
                 accessed,
                 first_block,
                 size);
     } else if (type == 2) {
-        return new Directory(nullptr,
+        return new Directory("",
                 created,
                 modified,
                 accessed,
@@ -115,7 +115,7 @@ void FileMeta::write_meta(std::fstream& file, int name_address) {
 
 void FileMeta::set_name(std::string new_name) {
     if (new_name.size() < FileMeta::max_name_len) {
-        this->name = new std::string(new_name);
+        this->name = new_name;
     } else {
         std::cout << "set_name:";
         std::cout << "Failed to rename: new name too large" << std::endl;
@@ -123,7 +123,7 @@ void FileMeta::set_name(std::string new_name) {
     }
 }
 
-std::string* FileMeta::get_name() {
+std::string FileMeta::get_name() {
     return this->name;
 }
 
@@ -143,7 +143,7 @@ void FileMeta::set_last_accessed(time_t moment) {
     this->accessed = moment;
 }
 
-File::File(std::string *n,
+File::File(std::string n,
         time_t c,
         time_t m,
         time_t a,
@@ -166,7 +166,7 @@ int File::get_size() {
     return this->size;
 }
 
-Directory::Directory(std::string *n,
+Directory::Directory(std::string n,
         time_t c,
         time_t m,
         time_t a,
@@ -207,14 +207,14 @@ int Directory::find_inside(std::string curpath, std::string file) {
         if(this->files[i]->type() == FileType::directory) {
             Directory* inside = (Directory*) this->files[i];
             std::string path = curpath;
-            path.append(*inside->get_name());
+            path.append(inside->get_name());
             output += inside->find_inside(path, file);
         } else {
-            if(this->files[i]->get_name()->compare(file) == 0) {
+            if(this->files[i]->get_name().compare(file) == 0) {
                 std::cout
                     << curpath
                     << "/"
-                    << *(this->files[i]->get_name())
+                    << this->files[i]->get_name()
                     << std::endl;
                 output += 1;
             }
@@ -228,7 +228,7 @@ FileMeta* Directory::get_file(std::string name) {
     FileMeta *file = nullptr;
 
     for (unsigned int i = 0; i < this->files.size() && file == nullptr; i++) {
-        if (this->files[i]->get_name()->compare(name) == 0) {
+        if (this->files[i]->get_name().compare(name) == 0) {
             file = this->files[i];
         }
     }
@@ -322,7 +322,7 @@ Filesystem::Filesystem(std::string filesystem_path) {
 
         // create root directory
         time_t cur_time = time(nullptr);
-        this->root = new Directory(new std::string(""),
+        this->root = new Directory("",
                 cur_time,
                 cur_time,
                 cur_time,
@@ -367,6 +367,10 @@ void Filesystem::load_file(File *file) {
     std::string content = "";
     int cur_block = file->get_address();
 
+    if (file->is_loaded) {
+        return;
+    }
+
     while (cur_block != -1) {
         this->move_to_block(cur_block);
         this->filesystem_file.read(buf, this->block_size);
@@ -378,6 +382,7 @@ void Filesystem::load_file(File *file) {
 
     content.erase(content.find('\0')); // remove extra null bytes
     file->set_content(content);
+    file->is_loaded = true;
 }
 
 void Filesystem::save_file(File *file) {
@@ -404,9 +409,13 @@ void Filesystem::load_directory(Directory *dir) {
     std::vector<std::string> file_name;
     int address;
 
+    if (dir->is_loaded) {
+        return;
+    }
+
     this->move_to_block(dir->get_address());
     if (dir == this->root) {
-        this->filesystem_file.seekg(28, this->filesystem_file.cur);
+        FileMeta::read_meta(this->filesystem_file, nullptr);
     }
 
     // first, read the metadata of files in this directory
@@ -465,16 +474,17 @@ void Filesystem::load_directory(Directory *dir) {
     for (int i = 0; i < (int) file_name_address.size(); i++) {
         dir->set_file_name(i, file_name[file_name_address[i]]);
     }
+    dir->is_loaded = true;
 }
 
 void Filesystem::save_directory(Directory *dir) {
     int cur_block = dir->get_address(), offset;
     int file_count = dir->get_file_count();
     FileMeta* file;
-    std::string *name, *next_name = nullptr;
+    std::string name, next_name = "";
 
     this->move_to_block(cur_block);
-    std::cout << "saving directory " << *(dir->get_name()) << std::endl;
+    std::cout << "saving directory " << dir->get_name() << std::endl;
     std::cout << "current block: " << cur_block << std::endl;
 
     // write metadata for root directory
@@ -484,7 +494,7 @@ void Filesystem::save_directory(Directory *dir) {
 
     for (int i = 0; i < file_count; i++) {
         file = dir->get_file(i);
-        std::cout << "writing meta of " << *(file->get_name()) << std::endl;
+        std::cout << "writing meta of " << file->get_name() << std::endl;
 
         file->write_meta(this->filesystem_file, i);
     }
@@ -495,14 +505,14 @@ void Filesystem::save_directory(Directory *dir) {
     std::cout << "current block: " << cur_block << std::endl;
     for (int i = 0; i < file_count; i++) {
         name = dir->get_file(i)->get_name();
-        std::cout << "writing name " << *name << std::endl;
-        this->filesystem_file << *name << '\0';
+        std::cout << "writing name " << name << std::endl;
+        this->filesystem_file << name << '\0';
 
         offset = this->get_write_position() % this->block_size;
         if (i < file_count - 1) {
             next_name = dir->get_file(i + 1)->get_name();
 
-            if (next_name->length() >= this->block_size - offset) {
+            if (next_name.length() >= this->block_size - offset) {
                 for (; offset > 0; offset--) {
                     this->filesystem_file << '\0';
                 }
@@ -635,7 +645,7 @@ void Filesystem::copy (std::string source_path, std::string dest_path) {
 
         time_t t = time(nullptr);
 
-        std::string* file_name_pointer = new std::string(path_names[i]);
+        std::string file_name_pointer = path_names[i];
         File *new_file = new File(file_name_pointer,
                 t,
                 t,
@@ -696,7 +706,7 @@ void Filesystem::mkdir (std::string dir_name) {
 
         time_t t = time(nullptr);
 
-        std::string* dirnamepointer = new std::string(path_names[i]);
+        std::string dirnamepointer = path_names[i];
         new_dir = new Directory(dirnamepointer,
                 t,
                 t,
@@ -747,7 +757,7 @@ void Filesystem::touch (std::string file_path) {
         if (j != 25000) {
             time_t t = time(nullptr);
 
-            std::string* file_name = new std::string(path_names[i]);
+            std::string file_name = path_names[i];
 
             temp = new File(file_name, t, t, t, j, 0);
             cur->add_file(temp);
@@ -803,7 +813,7 @@ void Filesystem::ls (std::string dir_name) {
             //printa info diretorio
             time_t mod_time = temp->get_last_modified();
             std::cout
-                << *temp->get_name()
+                << temp->get_name()
                 << "   Diretorio\nLast modified: "
                 << asctime(localtime(&mod_time))
                 << std::endl;
@@ -813,7 +823,7 @@ void Filesystem::ls (std::string dir_name) {
 
             time_t mod_time = temp->get_last_modified();
             std::cout
-                << *temp->get_name()
+                << temp->get_name()
                 << "\nLast modified: "
                 << asctime(localtime(&mod_time))
                 << std::endl;

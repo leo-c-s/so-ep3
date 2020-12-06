@@ -10,7 +10,7 @@ enum class FileType {
 
 class FileMeta {
   protected:
-    std::string *name;
+    std::string name;
     time_t created;
     time_t modified;
     time_t accessed;
@@ -20,7 +20,7 @@ class FileMeta {
   public:
     static const int max_name_len = 128;
 
-    FileMeta(std::string *name,
+    FileMeta(std::string name,
             time_t created,
             time_t modified,
             time_t accessed,
@@ -35,18 +35,19 @@ class FileMeta {
     void write_meta(std::fstream& file, int name_address);
     void print_meta();
     void set_name(std::string new_name);
-    std::string* get_name();
+    std::string get_name();
     int get_address();
     time_t get_last_modified();
     void set_last_modified(time_t moment);
     void set_last_accessed(time_t moment);
+    bool is_loaded;
 };
 
 class File : public FileMeta {
   private:
     std::string content;
   public:
-    File(std::string *name,
+    File(std::string name,
             time_t created,
             time_t modified,
             time_t accessed,
@@ -65,7 +66,7 @@ class Directory : public FileMeta {
   public:
     static const int max_files = 128;
 
-    Directory(std::string *name,
+    Directory(std::string name,
             time_t created,
             time_t modified,
             time_t accessed,
