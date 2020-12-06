@@ -1,7 +1,8 @@
 #include "fs_sim.hpp"
 #include <fstream>
-#include <string>
 #include <iostream>
+#include <sstream>
+#include <string>
 #include <ctime>
 #include <vector>
 #include <string.h>
@@ -45,9 +46,9 @@ std::string read_string(std::fstream& file) {
 }
 
 FileMeta::FileMeta(std::string *n,
-        struct tm *c,
-        struct tm *m,
-        struct tm *a,
+        time_t c,
+        time_t m,
+        time_t a,
         int f,
         int s) :
     name(n),
@@ -56,13 +57,11 @@ FileMeta::FileMeta(std::string *n,
     accessed(a),
     first_block_address(f),
     size(s)
-{}
+{
+}
 
 FileMeta::~FileMeta() {
     delete this->name;
-    delete this->created;
-    delete this->modified;
-    delete this->accessed;
 }
 
 FileMeta* FileMeta::read_meta(std::fstream& infile, int *address) {
@@ -80,16 +79,16 @@ FileMeta* FileMeta::read_meta(std::fstream& infile, int *address) {
     
     if (type == 1) {
         return new File(nullptr,
-                localtime(&created),
-                localtime(&modified),
-                localtime(&accessed),
+                created,
+                modified,
+                accessed,
                 first_block,
                 size);
     } else if (type == 2) {
         return new Directory(nullptr,
-                localtime(&created),
-                localtime(&modified),
-                localtime(&accessed),
+                created,
+                modified,
+                accessed,
                 first_block,
                 size);
     } else { // if type is invalid or zero, the file does not exist
@@ -99,9 +98,9 @@ FileMeta* FileMeta::read_meta(std::fstream& infile, int *address) {
 
 void FileMeta::write_meta(std::fstream& file, int name_address) {
     write_int(file, name_address);
-    write_int(file, mktime(this->created));
-    write_int(file, mktime(this->modified));
-    write_int(file, mktime(this->accessed));
+    write_int(file, this->created);
+    write_int(file, this->modified);
+    write_int(file, this->accessed);
     write_int(file, this->first_block_address);
     write_int(file, this->size);
 
@@ -132,19 +131,22 @@ int FileMeta::get_address() {
     return this->first_block_address;
 }
 
-struct tm* FileMeta::get_last_modified() {
+time_t FileMeta::get_last_modified() {
     return this->modified;
 }
 
-void FileMeta::set_last_accessed(struct tm* moment) {
-    delete this->modified;
+void FileMeta::set_last_modified(time_t moment) {
     this->modified = moment;
 }
 
+void FileMeta::set_last_accessed(time_t moment) {
+    this->accessed = moment;
+}
+
 File::File(std::string *n,
-        struct tm *c,
-        struct tm *m,
-        struct tm *a,
+        time_t c,
+        time_t m,
+        time_t a,
         int f,
         int s) : FileMeta(n, c, m, a, f, s)
 {
@@ -165,9 +167,9 @@ int File::get_size() {
 }
 
 Directory::Directory(std::string *n,
-        struct tm *c,
-        struct tm *m,
-        struct tm *a,
+        time_t c,
+        time_t m,
+        time_t a,
         int f,
         int s) : FileMeta(n, c, m, a, f, s)
 {
@@ -244,10 +246,6 @@ FileMeta* Directory::get_file(int index) {
     return file;
 }
 
-int Directory::get_first_block_address() {
-    return this->first_block_address;
-}
-
 Filesystem::Filesystem(std::string filesystem_path) {
     int bitmap_char_count = this->block_count / 8;
 
@@ -293,7 +291,8 @@ Filesystem::Filesystem(std::string filesystem_path) {
                 nullptr);
         this->root->set_name(std::string(""));
         this->load_directory(this->root);
-        std::cout << asctime(this->root->get_last_modified());
+        time_t mod_time = this->root->get_last_modified();
+        std::cout << asctime(localtime(&mod_time));
     } else {
         std::cout << "Creating filesystem file" << std::endl;
 
@@ -324,9 +323,9 @@ Filesystem::Filesystem(std::string filesystem_path) {
         // create root directory
         time_t cur_time = time(nullptr);
         this->root = new Directory(new std::string(""),
-                localtime(&cur_time),
-                localtime(&cur_time),
-                localtime(&cur_time),
+                cur_time,
+                cur_time,
+                cur_time,
                 0,
                 0);
         this->root->write_meta(this->filesystem_file, 0);
@@ -363,12 +362,49 @@ Filesystem::~Filesystem() {
     }
 }
 
+void Filesystem::load_file(File *file) {
+    char* buf = new char[this->block_size];
+    std::string content = "";
+    int cur_block = file->get_address();
+
+    while (cur_block != -1) {
+        this->move_to_block(cur_block);
+        this->filesystem_file.read(buf, this->block_size);
+        content.append(buf, this->block_size);
+        cur_block = this->allocation_table[cur_block];
+    }
+
+    delete [] buf;
+
+    content.erase(content.find('\0')); // remove extra null bytes
+    file->set_content(content);
+}
+
+void Filesystem::save_file(File *file) {
+    char* buf = new char[this->block_size];
+    std::stringstream ss(file->get_content());
+    int cur_block = file->get_address();
+
+    while (ss && cur_block != -1) {
+        for (int i = 0; i < this->block_size; i++) {
+            buf[i] = '\0';
+        }
+        ss.read(buf, this->block_size);
+
+        this->move_to_block(cur_block);
+        this->filesystem_file.write(buf, this->block_size);
+        cur_block = this->allocation_table[cur_block];
+    }
+
+    delete [] buf;
+}
+
 void Filesystem::load_directory(Directory *dir) {
     std::vector<int> file_name_address;
     std::vector<std::string> file_name;
     int address;
 
-    this->move_to_block(dir->get_first_block_address());
+    this->move_to_block(dir->get_address());
     if (dir == this->root) {
         this->filesystem_file.seekg(28, this->filesystem_file.cur);
     }
@@ -432,7 +468,7 @@ void Filesystem::load_directory(Directory *dir) {
 }
 
 void Filesystem::save_directory(Directory *dir) {
-    int cur_block = dir->get_first_block_address(), offset;
+    int cur_block = dir->get_address(), offset;
     int file_count = dir->get_file_count();
     FileMeta* file;
     std::string *name, *next_name = nullptr;
@@ -537,6 +573,79 @@ void Filesystem::set_FAT(int index, int value) {
 }
 
 void Filesystem::copy (std::string source_path, std::string dest_path) {
+    std::vector<std::string> path_names = split_path(dest_path);
+    int i = 0;
+    Directory* cur = this->root;
+    FileMeta* temp;
+
+    while (i < path_names.size() - 1) {
+        temp = cur->get_file(path_names[i]);
+
+        if (temp == nullptr || temp->type() != FileType::directory) {
+            throw "Path inválido!";
+        } else {
+            i++;
+            cur = (Directory*) temp;
+            this->load_directory(cur);
+        }
+    }
+
+    //cur tem diretorio onde arquivo sera colocado
+    temp = cur->get_file(path_names[i]);
+    if (temp != nullptr) {
+        std::cout << "Arquivo já existe!" << std::endl;
+    } else {
+        // read input file
+        std::fstream source;
+        source.open(source_path, std::fstream::in | std::fstream::ate);
+        auto file_size = source.tellg();
+        int space_found = 0;
+
+        std::vector<int> blocks;
+        int j;
+        for (j = 0; space_found < file_size && j < 25000; j++) {
+            if (this->bitmap[j]) {
+                blocks.push_back(j);
+                space_found += this->block_size;
+            }
+        }
+
+        if (space_found < file_size) {
+            std::cout
+                << "copy: not enough blocks for new file"
+                << std::endl;
+            source.close();
+            return;
+        }
+
+        char *buf = new char[file_size];
+        source.seekg(0, source.beg);
+        source.read(buf, file_size);
+        source.close();
+
+        std::string content(buf);
+        delete [] buf;
+
+        for (j = 0; j < blocks.size() - 1; j++) {
+            this->set_bit(blocks[j], false);
+            this->set_FAT(blocks[j], blocks[j + 1]);
+        }
+        this->set_bit(blocks[j], false);
+        this->set_FAT(blocks[j], -1);
+
+        time_t t = time(nullptr);
+
+        std::string* file_name_pointer = new std::string(path_names[i]);
+        File *new_file = new File(file_name_pointer,
+                t,
+                t,
+                t,
+                blocks[0],
+                (int) file_size);
+        cur->add_file(new_file);
+        this->save_directory(cur);
+        this->save_file(new_file);
+    }
 }
 
 void Filesystem::mkdir (std::string dir_name) {
@@ -586,17 +695,12 @@ void Filesystem::mkdir (std::string dir_name) {
         this->set_FAT(blocks[j], -1);
 
         time_t t = time(nullptr);
-        struct tm* rightnow1 = new struct tm;
-        struct tm* rightnow2 = new struct tm;
-        struct tm* rightnow3 = new struct tm;
-
-        *rightnow1 = *rightnow2 = *rightnow3 = *localtime(&t);
 
         std::string* dirnamepointer = new std::string(path_names[i]);
         new_dir = new Directory(dirnamepointer,
-                rightnow1,
-                rightnow2,
-                rightnow3,
+                t,
+                t,
+                t,
                 blocks[0],
                 0);
         cur->add_file(new_dir);
@@ -628,33 +732,39 @@ void Filesystem::touch (std::string file_path) {
         } else {
             i++;
             cur = (Directory*) temp;
+            this->load_directory(cur);
         }
     }
 
     //cur aponta para diretorio onde estará o arquivo
-    std::string* file_name = new std::string(path_names[i]);
-    temp = cur->get_file(*file_name);
+    temp = cur->get_file(path_names[i]);
     if (temp == nullptr) {
-        //TODO: cria arquivo novo
-        
         int j = 0;
         while(!this->bitmap[j] && j < 25000) {
             j++;
         }
-        struct tm* rightnow1 = localtime(0);
-        struct tm* rightnow2 = localtime(0);
-        struct tm* rightnow3 = localtime(0);
 
-        if(j!=25000) {
-            temp = new File(file_name, rightnow1, rightnow2, rightnow3, j, 0);
-            bitmap[j] = false;
-            this->allocation_table[j] = -1;
+        if (j != 25000) {
+            time_t t = time(nullptr);
+
+            std::string* file_name = new std::string(path_names[i]);
+
+            temp = new File(file_name, t, t, t, j, 0);
+            cur->add_file(temp);
+
+            this->set_bit(j, false);
+            this->set_FAT(j, -1);
+            
+            this->save_directory(cur);
         } else {
             std::cout << "Sistema de arquivos cheio!" << std::endl;
         }
     } else {
-        struct tm* rightnow1 = localtime(0);
-        temp->set_last_accessed(rightnow1);
+        time_t t = time(nullptr);
+
+        temp->set_last_accessed(t);
+        temp->set_last_modified(t);
+        this->save_directory(cur);
     }
 }
 
@@ -678,32 +788,39 @@ void Filesystem::ls (std::string dir_name) {
         } else {
             i++;
             cur = (Directory*) temp;
+            this->load_directory(cur);
         }
     }
 
     //cur points to the right directory
+    cur->set_last_accessed(time(nullptr));
+    this->save_directory(cur);
+
     for (i = 0; i < cur->get_file_count(); i++) {
         temp = cur->get_file(i);
 
         if (temp->type() == FileType::directory) {
             //printa info diretorio
+            time_t mod_time = temp->get_last_modified();
             std::cout
                 << *temp->get_name()
                 << "   Diretorio\nLast modified: "
-                << asctime(temp->get_last_modified())
+                << asctime(localtime(&mod_time))
                 << std::endl;
-        } else {
+        } else if (temp->type() == FileType::regular) {
             //printa info arquivo
             File* f = (File*) temp;
 
+            time_t mod_time = temp->get_last_modified();
             std::cout
                 << *temp->get_name()
                 << "\nLast modified: "
-                << asctime(temp->get_last_modified())
+                << asctime(localtime(&mod_time))
                 << std::endl;
             std::cout << "Size: " << f->get_size() << std::endl;
+        } else {
+            std::cout << "ls: invalid file type" << std::endl;
         }
-        std::cout << std::endl;
     }
 }
 
@@ -724,6 +841,7 @@ void Filesystem::find (std::string dir_name, std::string file_name) {
         } else {
             i++;
             cur = (Directory*) temp;
+            this->load_directory(cur);
         }
     }
 
@@ -757,7 +875,7 @@ std::vector<std::string> split_path(std::string file_path) {
     while (aux != NULL) {
         straux.assign(aux);
         words.push_back(straux);
-        aux = strtok(NULL, " ");
+        aux = strtok(NULL, " /");
     }
 
     return words;

@@ -11,9 +11,9 @@ enum class FileType {
 class FileMeta {
   protected:
     std::string *name;
-    struct tm *created;
-    struct tm *modified;
-    struct tm *accessed;
+    time_t created;
+    time_t modified;
+    time_t accessed;
     int first_block_address;
     int size;
     FileType type_;
@@ -21,9 +21,9 @@ class FileMeta {
     static const int max_name_len = 128;
 
     FileMeta(std::string *name,
-            struct tm *created,
-            struct tm *modified,
-            struct tm *accessed,
+            time_t created,
+            time_t modified,
+            time_t accessed,
             int first_block_address,
             int size);
     ~FileMeta();
@@ -37,8 +37,9 @@ class FileMeta {
     void set_name(std::string new_name);
     std::string* get_name();
     int get_address();
-    struct tm* get_last_modified();
-    void set_last_accessed(struct tm* moment);
+    time_t get_last_modified();
+    void set_last_modified(time_t moment);
+    void set_last_accessed(time_t moment);
 };
 
 class File : public FileMeta {
@@ -46,9 +47,9 @@ class File : public FileMeta {
     std::string content;
   public:
     File(std::string *name,
-            struct tm *created,
-            struct tm *modified,
-            struct tm *accessed,
+            time_t created,
+            time_t modified,
+            time_t accessed,
             int first_block_address,
             int size);
     ~File();
@@ -65,9 +66,9 @@ class Directory : public FileMeta {
     static const int max_files = 128;
 
     Directory(std::string *name,
-            struct tm *created,
-            struct tm *modified,
-            struct tm *accessed,
+            time_t created,
+            time_t modified,
+            time_t accessed,
             int first_block_address,
             int size);
     ~Directory();
@@ -77,7 +78,6 @@ class Directory : public FileMeta {
     FileMeta* get_file(int index);
     int get_file_count();
     int get_size();
-    int get_first_block_address();
     int find_inside(std::string curpath, std::string file);
 };
 
@@ -92,8 +92,8 @@ class Filesystem {
     static const int FAT_offset = 3125;
     static const int first_block_offset = 103125;
 
-    void load_file(File *dir);
-    void save_file(File *dir);
+    void load_file(File *file);
+    void save_file(File *file);
 
     void load_directory(Directory *dir);
     void save_directory(Directory *dir);
