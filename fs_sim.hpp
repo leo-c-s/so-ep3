@@ -77,6 +77,7 @@ class Directory : public FileMeta {
     void set_file_name(int index, std::string new_name);
     FileMeta* get_file(std::string name);
     FileMeta* get_file(int index);
+    void del_file(int index);
     int get_file_count();
     int get_size();
     int find_inside(std::string curpath, std::string file);
