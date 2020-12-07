@@ -319,9 +319,6 @@ Filesystem::Filesystem(std::string filesystem_path) {
     this->filesystem_file.open(filesystem_path,
             std::fstream::in | std::fstream::binary);
     if (this->filesystem_file) {
-        std::cout << "Reading filesystem file" << std::endl;
-
-        std::cout << "Reading bitmap..." << std::endl;
         // read bitmap
         char c;
         for (int i = 0; i < bitmap_char_count; i++) {
@@ -332,35 +329,17 @@ Filesystem::Filesystem(std::string filesystem_path) {
             }
         }
 
-        std::cout << "bitmap[0..15]: ";
-        for (int i = 0; i < 16; i++) {
-            std::cout << this->bitmap[i] << " ";
-        }
-        std::cout << std::endl;
-        std::cout << "FAT starts at " << (int)this->filesystem_file.tellg()
-            << std::endl;
-
         // read FAT
-        std::cout << "Reading FAT..." << std::endl;
         for (int i = 0; i < this->block_count; i++) {
             this->allocation_table[i] = read_int(this->filesystem_file);
         }
-
-        std::cout << "FAT[0..15]: ";
-        for (int i = 0; i < 16; i++) {
-            std::cout << this->allocation_table[i] << " ";
-        }
-        std::cout << std::endl;
 
         this->root = (Directory *)FileMeta::read_meta(this->filesystem_file,
                 nullptr);
         this->root->set_name(std::string(""));
         this->load_directory(this->root);
         time_t mod_time = this->root->get_last_modified();
-        std::cout << asctime(localtime(&mod_time));
     } else {
-        std::cout << "Creating filesystem file" << std::endl;
-
         // create new filesystem file
         this->filesystem_file.open(filesystem_path,
                 std::fstream::out | std::fstream::binary);
@@ -492,7 +471,6 @@ void Filesystem::load_directory(Directory *dir) {
     // first, read the metadata of files in this directory
     for (int i = 0; i < Directory::max_files; i++) {
         FileMeta *file = FileMeta::read_meta(this->filesystem_file, &address);
-        std::cout << "read metadata of " << file << std::endl;
 
         if (file == nullptr) {
             break;
@@ -515,7 +493,6 @@ void Filesystem::load_directory(Directory *dir) {
     int cur_offset;
     for (int i = 0; i < (int)file_name_address.size(); i++) {
         s = read_string(this->filesystem_file);
-        std::cout << "read file name " << s << std::endl;
 
         file_name.push_back(s);
 
@@ -560,7 +537,6 @@ void Filesystem::save_directory(Directory *dir) {
     std::string name, next_name = "";
 
     this->move_to_block(cur_block);
-    std::cout << "saving directory " << dir->get_name() << std::endl;
 
     // write metadata for root directory
     if (cur_block == 0) {
@@ -570,7 +546,6 @@ void Filesystem::save_directory(Directory *dir) {
     int address = 0;
     for (int i = 0; i < dir_size; i++) {
         file = dir->at(i);
-        std::cout << "writing meta of " << file->get_name() << std::endl;
 
         file->write_meta(this->filesystem_file, address);
 
@@ -585,7 +560,6 @@ void Filesystem::save_directory(Directory *dir) {
     int file_count = dir->get_file_count();
     for (int i = 0; i < file_count; i++) {
         name = dir->get_file(i)->get_name();
-        std::cout << "writing name " << name << std::endl;
         this->filesystem_file << name << '\0';
 
         offset = this->get_write_position() % this->block_size;
@@ -832,16 +806,13 @@ void Filesystem::rmdir(std::string dir_name) {
             else
             {
                 this->rm(newpath);
-                std::cout << "Apagou " << newpath << std::endl;
             }
             
         } else {
             this->rm(newpath);
-            std::cout << "Apagou " << newpath << std::endl;
         }
     }
     this->rm(dir_name);
-    std::cout << "Apagou " << dir_name << std::endl;
 }
 
 void Filesystem::cat(std::string file_path) {
