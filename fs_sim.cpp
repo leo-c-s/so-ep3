@@ -197,7 +197,7 @@ void Directory::add_file(FileMeta *file) {
 }
 
 int Directory::get_file_count() {
-    return (int)this->files.size();
+    return (int) this->files.size();
 }
 
 int Directory::find_inside(std::string curpath, std::string file) {
@@ -228,7 +228,7 @@ FileMeta *Directory::get_file(std::string name) {
     FileMeta *file = nullptr;
 
     for (unsigned int i = 0; i < this->files.size() && file == nullptr; i++) {
-        if (this->files[i]->get_name().compare(name) == 0) {
+        if (this->files[i]->get_name() == name) {
             file = this->files[i];
         }
     }
@@ -340,6 +340,7 @@ Filesystem::Filesystem(std::string filesystem_path) {
                 0,
                 0);
         this->root->write_meta(this->filesystem_file, 0);
+        this->root->is_loaded = true;
 
         // fill rest of block with zeroes
         long cur_pos = this->get_write_position();
@@ -420,9 +421,11 @@ void Filesystem::load_directory(Directory *dir) {
     std::vector<std::string> file_name;
     int address;
 
-    if (dir->is_loaded) {
+    if (dir == nullptr || dir->is_loaded) {
         return;
     }
+
+    std::cout << "dir->is_loaded == " << dir->is_loaded << std::endl;
 
     this->move_to_block(dir->get_address());
     if (dir == this->root) {
@@ -485,6 +488,7 @@ void Filesystem::load_directory(Directory *dir) {
     for (int i = 0; i < (int)file_name_address.size(); i++) {
         dir->set_file_name(i, file_name[file_name_address[i]]);
     }
+
     dir->is_loaded = true;
 }
 
@@ -903,7 +907,7 @@ void Filesystem::ls(std::string dir_name) {
     int i = 0;
     Directory *cur = this->root;
     FileMeta *temp;
-    int last = path_names.size() - 1;
+    int last = path_names.size();
     while (i < last) {
         temp = cur->get_file(path_names[i]);
 
@@ -957,7 +961,7 @@ void Filesystem::find(std::string dir_name, std::string file_name) {
     int i = 0;
     Directory *cur = this->root;
     FileMeta *temp;
-    int last = path_names.size() - 1;
+    int last = path_names.size();
     while (i < last) {
         temp = cur->get_file(path_names[i]);
 
@@ -987,18 +991,22 @@ void Filesystem::df() {
     File *file;
     FileMeta *temp;
     std::queue<Directory *> dirs;
-    int dir_count = 1, file_count = 0, free_space = 0, wasted_space = 0;
+    int dir_count = 0, file_count = 0, free_space = 0, wasted_space = 0;
     int n, size;
 
     dirs.push(this->root);
 
+    std::cout << "in df" << std::endl;
     while (!dirs.empty()) {
         cur = dirs.front();
+        std::cout << "will load dir " << cur->get_name() << std::endl;
         this->load_directory(cur);
         n = cur->get_file_count();
+        std::cout << n << "files to check" << std::endl;
 
         for (int i = 0; i < n; i++) {
             temp = cur->get_file(i);
+            std::cout << "file " << i << ": " <<temp->get_name()<<std::endl;
 
             if (temp->type() == FileType::directory) {
                 dir = (Directory *) temp;

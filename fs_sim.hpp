@@ -6,6 +6,7 @@
 enum class FileType {
     regular,
     directory,
+    deleted,
 };
 
 class FileMeta {
@@ -41,6 +42,7 @@ class FileMeta {
     void set_last_modified(time_t moment);
     void set_last_accessed(time_t moment);
     bool is_loaded;
+    void remove();
 };
 
 class File : public FileMeta {
@@ -74,6 +76,7 @@ class Directory : public FileMeta {
             int size);
     ~Directory();
     void add_file(FileMeta *file);
+    void push_file(FileMeta *file);
     void set_file_name(int index, std::string new_name);
     FileMeta* get_file(std::string name);
     FileMeta* get_file(int index);
@@ -81,6 +84,8 @@ class Directory : public FileMeta {
     int get_file_count();
     int get_size();
     int find_inside(std::string curpath, std::string file);
+    FileMeta* at(int index);
+    bool is_loaded;
 };
 
 class Filesystem {
