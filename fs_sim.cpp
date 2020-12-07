@@ -591,8 +591,8 @@ void Filesystem::copy(std::string source_path, std::string dest_path) {
     int i = 0;
     Directory *cur = this->root;
     FileMeta *temp;
-
-    while (i < path_names.size() - 1) {
+    int last = path_names.size() - 1;
+    while (i < last) {
         temp = cur->get_file(path_names[i]);
 
         if (temp == nullptr || temp->type() != FileType::directory) {
@@ -670,8 +670,8 @@ void Filesystem::mkdir(std::string dir_name) {
     int i = 0;
     Directory *cur = this->root, *new_dir;
     FileMeta *temp;
-
-    while (i < path_names.size() - 1) {
+    int last = path_names.size() - 1;
+    while (i < last) {
         temp = cur->get_file(path_names[i]);
 
         if (temp == nullptr || temp->type() != FileType::directory) {
@@ -731,8 +731,8 @@ void Filesystem::rmdir(std::string dir_name) {
     int i = 0;
     Directory *cur = this->root;
     FileMeta *temp;
-
-    while (i < path_names.size()) {
+    int last = path_names.size();
+    while (i < last) {
         temp = cur->get_file(path_names[i]);
 
         if (temp == nullptr || temp->type() != FileType::directory) {
@@ -748,9 +748,23 @@ void Filesystem::rmdir(std::string dir_name) {
 
     while (cur->get_file_count() > 0) {
         temp = cur->get_file(cur->get_file_count() - 1);
-        std::string newpath = dir_name + "/" + temp->get_name();
+        std::string newpath = "/";
+        for(i = 0; i<last;i++)
+        {
+            newpath.append(path_names[i]);
+            newpath.append("/");
+        }
+        newpath.append(temp->get_name());
         if (temp->type() == FileType::directory) {
-            this->rmdir(newpath);
+            Directory* dirpointer = (Directory*) temp;
+            if(dirpointer->get_file_count() > 0)
+                this->rmdir(newpath);
+            else
+            {
+                this->rm(newpath);
+                std::cout << "Apagou " << newpath << std::endl;
+            }
+            
         } else {
             this->rm(newpath);
             std::cout << "Apagou " << newpath << std::endl;
@@ -767,8 +781,8 @@ void Filesystem::cat(std::string file_path) {
     Directory *cur = this->root;
     File *file;
     FileMeta *temp;
-
-    while (i < path_names.size() - 1) {
+    int last = path_names.size() - 1;
+    while (i < last) {
         temp = cur->get_file(path_names[i]);
 
         if (temp == nullptr || temp->type() != FileType::directory) {
@@ -797,8 +811,8 @@ void Filesystem::touch(std::string file_path) {
     int i = 0;
     Directory *cur = this->root;
     FileMeta *temp;
-
-    while (i < path_names.size() - 1) {
+    int last = path_names.size() - 1;
+    while (i < last) {
         temp = cur->get_file(path_names[i]);
 
         if (temp == nullptr || temp->type() != FileType::directory) {
@@ -851,8 +865,8 @@ void Filesystem::rm(std::string file_path) {
     Directory *cur = this->root;
     FileMeta *temp;
 
-    std::cout << path_names.size() << std::endl;
-    while (i < path_names.size() - 1) {
+    int last = path_names.size() - 1;
+    while (i < last) {
         temp = cur->get_file(path_names[i]);
 
         if (temp == nullptr || temp->type() != FileType::directory) {
@@ -889,8 +903,8 @@ void Filesystem::ls(std::string dir_name) {
     int i = 0;
     Directory *cur = this->root;
     FileMeta *temp;
-
-    while (i < path_names.size()) {
+    int last = path_names.size() - 1;
+    while (i < last) {
         temp = cur->get_file(path_names[i]);
 
         if (temp == nullptr || temp->type() != FileType::directory) {
@@ -927,9 +941,10 @@ void Filesystem::ls(std::string dir_name) {
             std::cout
                 << temp->get_name()
                 << "\nLast modified: "
-                << asctime(localtime(&mod_time))
-                << std::endl;
+                << asctime(localtime(&mod_time));
+
             std::cout << "Size: " << f->get_size() << std::endl;
+            std::cout << std::endl;
         } else {
             std::cout << "ls: invalid file type" << std::endl;
         }
@@ -942,8 +957,8 @@ void Filesystem::find(std::string dir_name, std::string file_name) {
     int i = 0;
     Directory *cur = this->root;
     FileMeta *temp;
-
-    while (i < path_names.size()) {
+    int last = path_names.size() - 1;
+    while (i < last) {
         temp = cur->get_file(path_names[i]);
 
         if (temp == nullptr || temp->type() != FileType::directory) {
