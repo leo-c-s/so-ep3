@@ -91,6 +91,15 @@ FileMeta *FileMeta::read_meta(std::fstream &infile, int *address) {
                 accessed,
                 first_block,
                 size);
+    } else if (type == 3) {
+        FileMeta *f = new FileMeta("",
+                created,
+                modified,
+                accessed,
+                first_block,
+                size);
+        f->remove();
+        return f;
     } else { // if type is invalid or zero, the file does not exist
         return nullptr;
     }
@@ -108,6 +117,8 @@ void FileMeta::write_meta(std::fstream &file, int name_address) {
         write_int(file, 1);
     } else if (this->type_ == FileType::directory) {
         write_int(file, 2);
+    } else if (this->type_ == FileType::deleted) {
+        write_int(file, 3);
     } else {
         write_int(file, 0);
     }
@@ -141,6 +152,10 @@ void FileMeta::set_last_modified(time_t moment) {
 
 void FileMeta::set_last_accessed(time_t moment) {
     this->accessed = moment;
+}
+
+void FileMeta::remove() {
+    this->type_ = FileType::deleted;
 }
 
 File::File(std::string n,
@@ -193,11 +208,35 @@ void Directory::set_file_name(int index, std::string new_name) {
 }
 
 void Directory::add_file(FileMeta *file) {
+    for (int i = 0; i < this->files.size(); i++) {
+        if (this->files[i]->type() == FileType::deleted) {
+            delete this->files[i];
+            this->files[i] = file;
+            return;
+        }
+    }
+
+    this->files.push_back(file);
+}
+
+void Directory::push_file(FileMeta *file) {
     this->files.push_back(file);
 }
 
 int Directory::get_file_count() {
-    return (int) this->files.size();
+    int n = this->files.size(), count = 0;
+
+    for (int i = 0; i < n; i++) {
+        if (this->files[i]->type() != FileType::deleted) {
+            count ++;
+        }
+    }
+
+    return count;
+}
+
+int Directory::get_size() {
+    return this->files.size();
 }
 
 int Directory::find_inside(std::string curpath, std::string file) {
@@ -225,11 +264,12 @@ int Directory::find_inside(std::string curpath, std::string file) {
 }
 
 FileMeta *Directory::get_file(std::string name) {
-    FileMeta *file = nullptr;
+    FileMeta *file = nullptr, *temp;
 
     for (unsigned int i = 0; i < this->files.size() && file == nullptr; i++) {
-        if (this->files[i]->get_name() == name) {
-            file = this->files[i];
+        temp = this->files[i];
+        if (temp->get_name() == name && temp->type() != FileType::deleted) {
+            file = temp;
         }
     }
 
@@ -238,29 +278,43 @@ FileMeta *Directory::get_file(std::string name) {
 
 FileMeta *Directory::get_file(int index) {
     FileMeta *file = nullptr;
+    int j = 0;
 
-    if (index < this->get_file_count()) {
-        file = this->files[index];
+    for (int i = 0; i < this->files.size() && file == nullptr; i++) {
+        if (this->files[i]->type() != FileType::deleted) {
+            if (j == index) {
+                file = this->files[i];
+            } else {
+                j ++;
+            }
+        }
     }
 
     return file;
+}
+
+FileMeta* Directory::at(int index) {
+    if (index < this->files.size()) {
+        return this->files[index];
+    }
+
+    return nullptr;
 }
 
 void Directory::del_file(std::string file_name) {
     int file_count = this->files.size();
     for (int i = 0; i < file_count; i++) {
         if (this->files[i]->get_name() == file_name) {
-            delete this->files[i];
-            this->files.erase(this->files.begin() + i);
+            this->files[i]->remove();
             break;
         }
     }
 }
 
 Filesystem::Filesystem(std::string filesystem_path) {
-    int bitmap_char_count = this->block_count / 8;
+    int bitmap_char_count = 3125;
 
-    this->bitmap = std::vector<bool>(this->block_count, true);
+    this->bitmap = std::vector<bool>(25000, true);
 
     this->filesystem_file.open(filesystem_path,
             std::fstream::in | std::fstream::binary);
@@ -350,7 +404,7 @@ Filesystem::Filesystem(std::string filesystem_path) {
         }
 
         // create remaining blocks for root directory and add them to FAT
-        int cur_block = cur_pos / 4000;
+        int cur_block = cur_pos / this->block_size;
         for (int i = 0; i < 5; i++) {
             this->allocation_table[i] = i + 1; // mark next block in FAT
 
@@ -386,13 +440,18 @@ void Filesystem::load_file(File *file) {
     while (cur_block != -1) {
         this->move_to_block(cur_block);
         this->filesystem_file.read(buf, this->block_size);
-        content.append(buf, this->block_size);
+        content.append(buf);
         cur_block = this->allocation_table[cur_block];
     }
 
     delete[] buf;
 
-    content.erase(content.find('\0')); // remove extra null bytes
+    // remove extra null bytes
+    auto pos = content.find('\0');
+    if (pos != std::string::npos) {
+        content.erase(content.find('\0'));
+    }
+
     file->set_content(content);
     file->is_loaded = true;
 }
@@ -406,7 +465,7 @@ void Filesystem::save_file(File *file) {
         for (int i = 0; i < this->block_size; i++) {
             buf[i] = '\0';
         }
-        ss.read(buf, this->block_size);
+        ss.read(buf, this->block_size - 1);
 
         this->move_to_block(cur_block);
         this->filesystem_file.write(buf, this->block_size);
@@ -425,11 +484,9 @@ void Filesystem::load_directory(Directory *dir) {
         return;
     }
 
-    std::cout << "dir->is_loaded == " << dir->is_loaded << std::endl;
-
     this->move_to_block(dir->get_address());
     if (dir == this->root) {
-        FileMeta::read_meta(this->filesystem_file, nullptr);
+        delete FileMeta::read_meta(this->filesystem_file, nullptr);
     }
 
     // first, read the metadata of files in this directory
@@ -441,9 +498,11 @@ void Filesystem::load_directory(Directory *dir) {
             break;
         }
 
-        file_name_address.push_back(address);
+        if (file->type() != FileType::deleted) {
+            file_name_address.push_back(address);
+        }
 
-        dir->add_file(file);
+        dir->push_file(file);
     }
 
     // then, move to the next block of the directory
@@ -485,8 +544,10 @@ void Filesystem::load_directory(Directory *dir) {
     }
 
     // finally, set the names of the files in the directory
-    for (int i = 0; i < (int)file_name_address.size(); i++) {
-        dir->set_file_name(i, file_name[file_name_address[i]]);
+    FileMeta *f;
+    for (int i = 0; i < (int) file_name_address.size(); i++) {
+        f = dir->get_file(i);
+        f->set_name(file_name[file_name_address[i]]);
     }
 
     dir->is_loaded = true;
@@ -494,7 +555,7 @@ void Filesystem::load_directory(Directory *dir) {
 
 void Filesystem::save_directory(Directory *dir) {
     int cur_block = dir->get_address(), offset;
-    int file_count = dir->get_file_count();
+    int dir_size = dir->get_size();
     FileMeta *file;
     std::string name, next_name = "";
 
@@ -506,16 +567,22 @@ void Filesystem::save_directory(Directory *dir) {
         this->root->write_meta(this->filesystem_file, 0);
     }
 
-    for (int i = 0; i < file_count; i++) {
-        file = dir->get_file(i);
+    int address = 0;
+    for (int i = 0; i < dir_size; i++) {
+        file = dir->at(i);
         std::cout << "writing meta of " << file->get_name() << std::endl;
 
-        file->write_meta(this->filesystem_file, i);
+        file->write_meta(this->filesystem_file, address);
+
+        if (file->type() != FileType::deleted) {
+            address ++;
+        }
     }
 
     cur_block = this->allocation_table[cur_block];
     this->move_to_block(cur_block);
 
+    int file_count = dir->get_file_count();
     for (int i = 0; i < file_count; i++) {
         name = dir->get_file(i)->get_name();
         std::cout << "writing name " << name << std::endl;
@@ -543,7 +610,6 @@ void Filesystem::save_directory(Directory *dir) {
         for (; offset < this->block_size; offset++) {
             this->filesystem_file << '\0';
         }
-        offset = this->get_write_position() % this->block_size;
 
         cur_block = this->allocation_table[cur_block];
         this->move_to_block(cur_block);
@@ -621,7 +687,7 @@ void Filesystem::copy(std::string source_path, std::string dest_path) {
 
         std::vector<int> blocks;
         int j;
-        for (j = 0; space_found < file_size && j < 25000; j++) {
+        for (j = 0; space_found < file_size && j < this->block_count; j++) {
             if (this->bitmap[j]) {
                 blocks.push_back(j);
                 space_found += this->block_size;
@@ -694,7 +760,7 @@ void Filesystem::mkdir(std::string dir_name) {
     } else {
         std::vector<int> blocks;
         int j;
-        for (j = 0; blocks.size() < 6 && j < 25000; j++) {
+        for (j = 0; blocks.size() < 6 && j < this->block_count; j++) {
             if (this->bitmap[j]) {
                 blocks.push_back(j);
             }
@@ -805,7 +871,7 @@ void Filesystem::cat(std::string file_path) {
     } else {
         file = (File *)temp;
         this->load_file(file);
-        std::cout << file->get_content();
+        std::cout << file->get_content() << std::endl;
     }
 }
 
@@ -834,11 +900,11 @@ void Filesystem::touch(std::string file_path) {
     temp = cur->get_file(path_names[i]);
     if (temp == nullptr) {
         int j = 0;
-        while (!this->bitmap[j] && j < 25000) {
+        while (!this->bitmap[j] && j < this->block_count) {
             j++;
         }
 
-        if (j != 25000) {
+        if (j != this->block_count) {
             time_t t = time(nullptr);
 
             std::string file_name = path_names[i];
@@ -996,17 +1062,13 @@ void Filesystem::df() {
 
     dirs.push(this->root);
 
-    std::cout << "in df" << std::endl;
     while (!dirs.empty()) {
         cur = dirs.front();
-        std::cout << "will load dir " << cur->get_name() << std::endl;
         this->load_directory(cur);
         n = cur->get_file_count();
-        std::cout << n << "files to check" << std::endl;
 
         for (int i = 0; i < n; i++) {
             temp = cur->get_file(i);
-            std::cout << "file " << i << ": " <<temp->get_name()<<std::endl;
 
             if (temp->type() == FileType::directory) {
                 dir = (Directory *) temp;

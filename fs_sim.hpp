@@ -114,7 +114,7 @@ class Filesystem {
   public:
     static const long max_size = 100000000;
     static const long block_size = 4000;
-    static const long block_count = 25000;
+    static const long block_count = 24968;
 
     Filesystem(std::string filesystem_path);
     ~Filesystem();
